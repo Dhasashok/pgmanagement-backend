@@ -27,10 +27,10 @@ const getDashboardSummary = async (req, res) => {
       SELECT 
         COALESCE(SUM(total_amount), 0) as expected_rent,
         COALESCE(SUM(paid_amount), 0) as collected_rent,
-        COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'verification_pending' THEN pending_amount ELSE 0 END), 0) as pending_rent,
-        COALESCE(SUM(CASE WHEN status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?) THEN pending_amount ELSE 0 END), 0) as overdue_rent,
-        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') THEN pending_amount ELSE 0 END), 0) as due_today_amount,
-        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') THEN 1 ELSE 0 END), 0) as due_today_count
+        COALESCE(SUM(CASE WHEN (status = 'pending' OR status = 'verification_pending') AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as pending_rent,
+        COALESCE(SUM(CASE WHEN (status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?)) AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as overdue_rent,
+        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as due_today_amount,
+        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') AND pending_amount > 0 THEN 1 ELSE 0 END), 0) as due_today_count
       FROM rent_records
       WHERE month_year = ?
     `, [todayStr, todayStr, todayStr, currentMonth]);
@@ -64,6 +64,7 @@ const getDashboardSummary = async (req, res) => {
       LEFT JOIN floors f ON rm.floor_id = f.id
       WHERE r.status IN ('pending', 'verification_pending', 'overdue')
         AND r.due_date <= ?
+        AND r.pending_amount > 0
       ORDER BY r.due_date ASC, r.pending_amount DESC
       LIMIT 10
     `, [todayStr]);
