@@ -53,28 +53,49 @@ app.use(morgan('dev'));
 const uploadsPath = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(uploadsPath));
 
-// API Routes
+// API Routes (supports both /api/* and root /*)
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
 app.use('/api/pg', pgRoutes);
+app.use('/pg', pgRoutes);
+
 app.use('/api/tenants', tenantsRoutes);
+app.use('/tenants', tenantsRoutes);
+
 app.use('/api/rent', rentRoutes);
+app.use('/rent', rentRoutes);
 app.use('/api/rents', rentRoutes);
+app.use('/rents', rentRoutes);
+
 app.use('/api/payment', paymentRoutes);
+app.use('/payment', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/payments', paymentRoutes);
+
 app.use('/api/complaints', complaintsRoutes);
+app.use('/complaints', complaintsRoutes);
+
 app.use('/api/announcements', announcementsRoutes);
+app.use('/announcements', announcementsRoutes);
+
 app.use('/api/notifications', notificationsRoutes);
+app.use('/notifications', notificationsRoutes);
+
 app.use('/api/analytics', analyticsRoutes);
+app.use('/analytics', analyticsRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+const healthHandler = (req, res) => {
   res.json({
     status: 'online',
     timestamp: new Date().toISOString(),
     service: 'PG Management Backend API',
     version: '1.0.0'
   });
-});
+};
+app.get('/api/health', healthHandler);
+app.get('/health', healthHandler);
 
 // Centralized error handler
 app.use((err, req, res, next) => {
