@@ -55,12 +55,23 @@ const getRentRecords = async (req, res) => {
     sql += ' ORDER BY r.due_date DESC, t.full_name ASC';
 
     const records = await query(sql, params);
-    const mappedRecords = records.map(r => ({
-      ...r,
-      amount: parseFloat(r.total_amount || r.rent_amount || r.pending_amount || 6000.00),
-      rentId: r.id,
-      rent_id: r.id
-    }));
+    const mappedRecords = records.map(r => {
+      const isPaid = parseFloat(r.pending_amount || 0) <= 0 || r.status === 'paid';
+      const effectiveStatus = isPaid
+        ? 'paid'
+        : (r.status === 'overdue' || (r.status === 'pending' && r.due_date < todayStr))
+        ? 'overdue'
+        : r.status;
+
+      return {
+        ...r,
+        status: effectiveStatus,
+        pending_amount: isPaid ? 0 : parseFloat(r.pending_amount || 0),
+        amount: parseFloat(r.total_amount || r.rent_amount || r.pending_amount || 6000.00),
+        rentId: r.id,
+        rent_id: r.id
+      };
+    });
 
     res.json({
       success: true,
@@ -87,14 +98,14 @@ const getRentStats = async (req, res) => {
         COUNT(id) as total_tenants_billed,
         COALESCE(SUM(total_amount), 0) as expected_rent,
         COALESCE(SUM(paid_amount), 0) as collected_rent,
-        COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'verification_pending' THEN pending_amount ELSE 0 END), 0) as pending_rent,
-        COALESCE(SUM(CASE WHEN status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?) THEN pending_amount ELSE 0 END), 0) as overdue_rent,
-        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') THEN pending_amount ELSE 0 END), 0) as due_today_amount,
-        COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) as paid_count,
-        COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
-        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') THEN 1 ELSE 0 END), 0) as due_today_count,
-        COALESCE(SUM(CASE WHEN status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?) THEN 1 ELSE 0 END), 0) as overdue_count,
-        COALESCE(SUM(CASE WHEN status = 'verification_pending' THEN 1 ELSE 0 END), 0) as verification_pending_count
+        COALESCE(SUM(CASE WHEN (status = 'pending' OR status = 'verification_pending') AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as pending_rent,
+        COALESCE(SUM(CASE WHEN (status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?)) AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as overdue_rent,
+        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') AND pending_amount > 0 THEN pending_amount ELSE 0 END), 0) as due_today_amount,
+        COALESCE(SUM(CASE WHEN status = 'paid' OR pending_amount <= 0 THEN 1 ELSE 0 END), 0) as paid_count,
+        COALESCE(SUM(CASE WHEN status = 'pending' AND pending_amount > 0 THEN 1 ELSE 0 END), 0) as pending_count,
+        COALESCE(SUM(CASE WHEN due_date = ? AND status IN ('pending', 'verification_pending') AND pending_amount > 0 THEN 1 ELSE 0 END), 0) as due_today_count,
+        COALESCE(SUM(CASE WHEN (status = 'overdue' OR (status IN ('pending', 'verification_pending') AND due_date < ?)) AND pending_amount > 0 THEN 1 ELSE 0 END), 0) as overdue_count,
+        COALESCE(SUM(CASE WHEN status = 'verification_pending' AND pending_amount > 0 THEN 1 ELSE 0 END), 0) as verification_pending_count
       FROM rent_records
       WHERE month_year = ?
     `, [todayStr, todayStr, todayStr, todayStr, currentMonth]);
