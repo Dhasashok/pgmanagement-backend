@@ -1,0 +1,47 @@
+[
+  {
+    "id": "TC001",
+    "title": "test_auth_login_with_valid_credentials",
+    "description": "Verify that POST /api/auth/login with valid user credentials returns a 200 status and a valid JWT token."
+  },
+  {
+    "id": "TC002",
+    "title": "test_pg_property_update_with_owner_token",
+    "description": "Verify that PUT /api/pg/property with a valid owner Bearer token updates the property information and returns a 200 status with updated settings."
+  },
+  {
+    "id": "TC003",
+    "title": "test_tenants_create_with_owner_token",
+    "description": "Verify that POST /api/tenants with owner Bearer token and valid tenant details creates a new tenant record and returns a 201 status."
+  },
+  {
+    "id": "TC004",
+    "title": "test_rent_generate_with_owner_token",
+    "description": "Verify that POST /api/rent/generate with owner Bearer token triggers monthly rent bill generation and returns a 200 status with generated bills."
+  },
+  {
+    "id": "TC005",
+    "title": "test_payment_create_order_with_valid_rent_reference",
+    "description": "Verify that POST /api/payment/create-order with Bearer token and valid rent reference returns a 200 status with Razorpay order details."
+  },
+  {
+    "id": "TC006",
+    "title": "test_complaints_file_new_complaint",
+    "description": "Verify that POST /api/complaints with Bearer token and valid complaint details creates a new complaint ticket and returns a 201 status."
+  },
+  {
+    "id": "TC007",
+    "title": "test_announcements_publish_with_owner_token",
+    "description": "Verify that POST /api/announcements with owner Bearer token and valid announcement content publishes the announcement and returns a 201 status."
+  },
+  {
+    "id": "TC008",
+    "title": "test_notifications_fetch_for_authenticated_user",
+    "description": "Verify that GET /api/notifications with valid Bearer token returns a 200 status with the current user's notifications."
+  },
+  {
+    "id": "TC009",
+    "title": "test_analytics_dashboard_summary_with_authentication",
+    "description": "Verify that GET /api/analytics/dashboard-summary with valid Bearer token returns a 200 status with dashboard KPIs."
+  }
+]
