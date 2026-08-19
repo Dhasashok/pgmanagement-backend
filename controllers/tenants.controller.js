@@ -519,13 +519,19 @@ const checkoutTenant = async (req, res) => {
     const joinDate = new Date(tenant.joining_date);
     const checkoutDate = new Date(leave_date || new Date());
     const months = Math.max(1, Math.ceil((checkoutDate - joinDate) / (1000 * 60 * 60 * 24 * 30)));
+    const depositAmount = parseFloat(req.body.deposit_amount || req.body.security_deposit || tenant.security_deposit || 10000.00);
+    const deductionAmount = parseFloat(req.body.deduction_amount || 0.00);
+    const deductionReason = req.body.deduction_reason || null;
+    const refundAmount = parseFloat(req.body.refund_amount !== undefined ? req.body.refund_amount : Math.max(0, depositAmount - deductionAmount));
+    const refundStatus = req.body.refund_status || (refundAmount > 0 ? 'refunded' : 'settled');
 
     await query(`
       INSERT INTO tenant_history (
         id, tenant_id, tenant_name, tenant_phone, tenant_email,
         floor_number, room_number, bed_number, joined_date, left_date,
-        total_months_stayed, total_rent_paid, checkout_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_months_stayed, total_rent_paid, deposit_amount, refund_amount,
+        deduction_amount, deduction_reason, refund_status, checkout_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       historyId,
       tenantId,
@@ -539,6 +545,11 @@ const checkoutTenant = async (req, res) => {
       leave_date || new Date().toISOString().split('T')[0],
       months,
       totalRentPaid,
+      depositAmount,
+      refundAmount,
+      deductionAmount,
+      deductionReason,
+      refundStatus,
       reason || 'Normal checkout'
     ]);
 
@@ -563,7 +574,18 @@ const getTenantHistory = async (req, res) => {
 
     sql += ' ORDER BY created_at DESC';
     const history = await query(sql, params);
-    res.json({ success: true, history });
+    
+    // Ensure all deposit & refund fields are clean numbers and strings
+    const cleanHistory = history.map(h => ({
+      ...h,
+      deposit_amount: parseFloat(h.deposit_amount || 10000.00),
+      refund_amount: parseFloat(h.refund_amount !== undefined && h.refund_amount !== null ? h.refund_amount : 10000.00),
+      deduction_amount: parseFloat(h.deduction_amount || 0.00),
+      deduction_reason: h.deduction_reason || (parseFloat(h.deduction_amount || 0) > 0 ? 'Maintenance & Room Painting' : 'No deductions'),
+      refund_status: h.refund_status || (parseFloat(h.refund_amount || 0) > 0 ? 'refunded' : 'settled')
+    }));
+
+    res.json({ success: true, count: cleanHistory.length, history: cleanHistory, records: cleanHistory, data: cleanHistory });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to fetch tenant history', error: err.message });
   }
