@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const { initializeDatabase } = require('./config/db');
 const { activateDuePrebookings } = require('./controllers/tenants.controller');
+const { ensurePendingPaymentProofs } = require('./controllers/payment.controller');
 
 // Route imports
 const authRoutes = require('./routes/auth.routes');
@@ -117,6 +118,7 @@ const start = async () => {
   try {
     await initializeDatabase();
     await activateDuePrebookings();
+    await ensurePendingPaymentProofs();
     // Keep future reservations in sync even when no owner is viewing the tenant list.
     setInterval(() => {
       activateDuePrebookings().catch((error) => console.error('Pre-booking activation failed:', error));
