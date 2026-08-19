@@ -32,11 +32,17 @@ const getRentRecords = async (req, res) => {
     }
     if (status && status !== 'all') {
       if (status === 'due_today') {
-        sql += " AND r.due_date = ? AND r.status IN ('pending', 'verification_pending')";
+        sql += " AND r.due_date = ? AND r.status IN ('pending', 'verification_pending') AND r.pending_amount > 0 AND r.status != 'paid'";
         params.push(todayStr);
       } else if (status === 'overdue') {
-        sql += " AND (r.status = 'overdue' OR (r.status IN ('pending', 'verification_pending') AND r.due_date < ?))";
+        sql += " AND (r.status = 'overdue' OR (r.status IN ('pending', 'verification_pending') AND r.due_date < ?)) AND r.pending_amount > 0 AND r.status != 'paid'";
         params.push(todayStr);
+      } else if (status === 'paid') {
+        sql += " AND (r.status = 'paid' OR r.pending_amount <= 0)";
+      } else if (status === 'pending') {
+        sql += " AND r.status = 'pending' AND r.pending_amount > 0 AND r.status != 'paid'";
+      } else if (status === 'verification_pending') {
+        sql += " AND r.status = 'verification_pending' AND r.pending_amount > 0 AND r.status != 'paid'";
       } else {
         sql += ' AND r.status = ?';
         params.push(status);
@@ -55,7 +61,7 @@ const getRentRecords = async (req, res) => {
     sql += ' ORDER BY r.due_date DESC, t.full_name ASC';
 
     const records = await query(sql, params);
-    const mappedRecords = records.map(r => {
+    let mappedRecords = records.map(r => {
       const isPaid = parseFloat(r.pending_amount || 0) <= 0 || r.status === 'paid';
       const effectiveStatus = isPaid
         ? 'paid'
@@ -72,6 +78,21 @@ const getRentRecords = async (req, res) => {
         rent_id: r.id
       };
     });
+
+    // Double check: if specific status requested, guarantee no mismatched records leak through
+    if (status && status !== 'all') {
+      if (status === 'paid') {
+        mappedRecords = mappedRecords.filter(r => r.status === 'paid');
+      } else if (status === 'overdue') {
+        mappedRecords = mappedRecords.filter(r => r.status === 'overdue');
+      } else if (status === 'due_today') {
+        mappedRecords = mappedRecords.filter(r => r.status !== 'paid' && String(r.due_date).slice(0, 10) === todayStr);
+      } else if (status === 'pending') {
+        mappedRecords = mappedRecords.filter(r => r.status === 'pending');
+      } else if (status === 'verification_pending') {
+        mappedRecords = mappedRecords.filter(r => r.status === 'verification_pending');
+      }
+    }
 
     res.json({
       success: true,
