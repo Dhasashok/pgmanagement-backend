@@ -864,7 +864,7 @@ const getPaymentProofs = async (req, res) => {
              COALESCE(t.full_name, 'Resident') as tenant_name,
              COALESCE(t.mobile_number, '') as tenant_phone,
              COALESCE(t.email, '') as tenant_email,
-             COALESCE(r.month_year, DATE_FORMAT(CURRENT_DATE, '%Y-%m')) as month_year,
+             COALESCE(r.month_year, '2026-08') as month_year,
              COALESCE(r.total_amount, p.amount) as total_amount,
              COALESCE(b.bed_number, 'BED 01') as bed_number,
              COALESCE(rm.room_number, '101') as room_number,
