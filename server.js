@@ -98,7 +98,19 @@ app.use('/notifications', notificationsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/analytics', analyticsRoutes);
 
-// Health check endpoint
+// Root & Health check endpoints
+const welcomeHandler = (req, res) => {
+  res.json({
+    status: 'online',
+    message: '🚀 PG Management Backend API is running successfully.',
+    service: 'PG Management Backend API',
+    version: '1.0.0',
+    frontend: 'https://pgmanagement-frontend.vercel.app',
+    health: '/api/health'
+  });
+};
+app.get('/', welcomeHandler);
+
 const healthHandler = (req, res) => {
   res.json({
     status: 'online',
