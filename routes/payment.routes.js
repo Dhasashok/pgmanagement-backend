@@ -45,6 +45,27 @@ router.post('/submit-proof', authRequired, upload.single('proof_file'), submitPa
 // Owner review queue for manual proofs
 router.get('/proofs', ownerOnly, getPaymentProofs);
 router.post('/proofs/:id/verify', ownerOnly, verifyPaymentProof);
+router.patch('/proofs/:id/verify', ownerOnly, verifyPaymentProof);
+router.post('/proofs/:id/reject', ownerOnly, (req, res) => {
+  req.body = req.body || {};
+  req.body.action = 'reject';
+  verifyPaymentProof(req, res);
+});
+router.patch('/proofs/:id/reject', ownerOnly, (req, res) => {
+  req.body = req.body || {};
+  req.body.action = 'reject';
+  verifyPaymentProof(req, res);
+});
+router.post('/proofs/:id/approve', ownerOnly, (req, res) => {
+  req.body = req.body || {};
+  req.body.action = 'approve';
+  verifyPaymentProof(req, res);
+});
+router.patch('/proofs/:id/approve', ownerOnly, (req, res) => {
+  req.body = req.body || {};
+  req.body.action = 'approve';
+  verifyPaymentProof(req, res);
+});
 
 // Payment audit logs for owner
 router.get('/audit-logs', ownerOnly, getPaymentAuditLogs);

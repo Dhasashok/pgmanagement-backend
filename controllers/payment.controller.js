@@ -850,6 +850,11 @@ const getPaymentProofs = async (req, res) => {
   try {
     const { status = 'pending' } = req.query;
 
+    // Set aggressive cache-invalidation headers to prevent stale CDN/browser caches
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     if (status === 'pending' || status === 'all') {
       await ensurePendingPaymentProofs();
     }
@@ -1189,6 +1194,10 @@ const getReceipt = async (req, res) => {
 // =========================================================================
 const getPaymentAuditLogs = async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const logs = await query(`
       SELECT a.*,
              t.full_name as tenant_name,
