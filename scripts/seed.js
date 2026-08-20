@@ -97,7 +97,19 @@ async function seedData() {
       VALUES ('asg-001', 'tnt-001', 'bed-101-1', 1)
     `);
 
-    console.log('✅ Demo seed data inserted successfully.');
+    // 8. Rent Record & Pending Payment Proof
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    await query(`
+      INSERT INTO rent_records (id, tenant_id, month_year, rent_amount, total_amount, paid_amount, pending_amount, due_date, status)
+      VALUES ('rnt-001', 'tnt-001', ?, 6000.00, 6000.00, 0.00, 6000.00, CONCAT(?, '-05'), 'verification_pending')
+    `, [currentMonth, currentMonth]);
+
+    await query(`
+      INSERT INTO payment_proofs (id, rent_record_id, tenant_id, proof_image_url, transaction_ref, amount, notes, status, submitted_at)
+      VALUES ('prf-001', 'rnt-001', 'tnt-001', 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600', 'UPI-REF-9988221144', 6000.00, 'Paid via PhonePe / GPay. Please verify receipt.', 'pending', CURRENT_TIMESTAMP)
+    `);
+
+    console.log('✅ Demo seed data inserted successfully (including pending payment proofs).');
     process.exit(0);
   } catch (err) {
     console.error('❌ Seed failed:', err);

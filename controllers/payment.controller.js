@@ -856,17 +856,17 @@ const getPaymentProofs = async (req, res) => {
 
     let sql = `
       SELECT p.*,
-             t.full_name as tenant_name,
-             t.mobile_number as tenant_phone,
-             t.email as tenant_email,
-             r.month_year,
-             r.total_amount,
-             b.bed_number,
-             rm.room_number,
-             f.floor_number
+             COALESCE(t.full_name, 'Resident') as tenant_name,
+             COALESCE(t.mobile_number, '') as tenant_phone,
+             COALESCE(t.email, '') as tenant_email,
+             COALESCE(r.month_year, DATE_FORMAT(CURRENT_DATE, '%Y-%m')) as month_year,
+             COALESCE(r.total_amount, p.amount) as total_amount,
+             COALESCE(b.bed_number, 'BED 01') as bed_number,
+             COALESCE(rm.room_number, '101') as room_number,
+             COALESCE(f.floor_number, 1) as floor_number
       FROM payment_proofs p
-      JOIN tenants t ON p.tenant_id = t.id
-      JOIN rent_records r ON p.rent_record_id = r.id
+      LEFT JOIN tenants t ON p.tenant_id = t.id
+      LEFT JOIN rent_records r ON p.rent_record_id = r.id
       LEFT JOIN tenant_room_assignments tra ON t.id = tra.tenant_id AND tra.is_current = 1
       LEFT JOIN beds b ON tra.bed_id = b.id
       LEFT JOIN rooms rm ON b.room_id = rm.id
@@ -885,6 +885,7 @@ const getPaymentProofs = async (req, res) => {
     const proofs = await query(sql, params);
     return res.json({ success: true, count: proofs.length, proofs, records: proofs, data: proofs });
   } catch (err) {
+    console.error('[GET_PAYMENT_PROOFS_ERROR]', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch payment proofs' });
   }
 };
@@ -896,25 +897,36 @@ const verifyPaymentProof = async (req, res) => {
   const proofId = req.params.id;
   const { action, rejection_reason } = req.body;
   const normalizedAction = String(action || '').toLowerCase();
+  const reviewerId = req.user?.id || 'usr-owner-001';
 
   console.log('[PAYMENT_VERIFY] Verification request initiated:', {
     proofId,
     action: normalizedAction,
     rejection_reason,
-    reviewerId: req.user?.id || 'owner',
-    timestamp: new Date().toISOString()
+    reviewerId,
+    timestamp: new Date().toISOString(),
+    ip: req.ip || req.connection?.remoteAddress
   });
 
   try {
     if (!normalizedAction || !['approve', 'reject'].includes(normalizedAction)) {
-      console.warn('[PAYMENT_VERIFY] Invalid action submitted:', { action });
+      console.warn('[PAYMENT_VERIFY_BAD_REQUEST] Invalid action submitted:', { proofId, action });
       return res.status(400).json({ success: false, message: 'Action must be "approve" or "reject"' });
     }
 
     const proof = await queryOne('SELECT * FROM payment_proofs WHERE id = ?', [proofId]);
     if (!proof) {
-      console.warn('[PAYMENT_VERIFY] Proof not found:', { proofId });
-      return res.status(404).json({ success: false, message: 'Payment proof record not found' });
+      console.warn('[PAYMENT_VERIFY_NOT_FOUND] Proof not found:', { proofId });
+      return res.status(404).json({ success: false, message: 'Payment proof record not found.' });
+    }
+
+    if (proof.status === 'approved' || proof.status === 'rejected') {
+      console.warn('[PAYMENT_VERIFY_ALREADY_PROCESSED] Proof already reviewed:', { proofId, currentStatus: proof.status });
+      return res.status(400).json({
+        success: false,
+        message: `This payment proof has already been ${proof.status}.`,
+        status: proof.status
+      });
     }
 
     const rentRecord = await queryOne('SELECT * FROM rent_records WHERE id = ?', [proof.rent_record_id]);
@@ -927,7 +939,7 @@ const verifyPaymentProof = async (req, res) => {
           reviewed_at = CURRENT_TIMESTAMP,
           reviewed_by = ?
         WHERE id = ?
-      `, [req.user?.id || 'usr-owner-001', proofId]);
+      `, [reviewerId, proofId]);
 
       const paymentId = `pay-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const receiptNo = `REC-${(rentRecord ? rentRecord.month_year : '2026').replace('-', '')}-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -938,15 +950,34 @@ const verifyPaymentProof = async (req, res) => {
       `, [paymentId, proof.rent_record_id, proof.tenant_id, proof.amount, proof.transaction_ref, receiptNo, `QR Payment approved manually by owner. Notes: ${proof.notes || ''}`]);
 
       let newStatus = 'paid';
+      let newPaid = parseFloat(proof.amount);
+      let newPending = 0;
+
       if (rentRecord) {
-        const newPaid = (parseFloat(rentRecord.paid_amount) || 0) + parseFloat(proof.amount);
-        const newPending = Math.max(0, parseFloat(rentRecord.total_amount) - newPaid);
+        newPaid = (parseFloat(rentRecord.paid_amount) || 0) + parseFloat(proof.amount);
+        newPending = Math.max(0, parseFloat(rentRecord.total_amount) - newPaid);
         newStatus = newPending === 0 ? 'paid' : 'partially_paid';
 
         await query('UPDATE rent_records SET paid_amount = ?, pending_amount = ?, status = ? WHERE id = ?', [
           newPaid, newPending, newStatus, proof.rent_record_id
         ]);
       }
+
+      // Log into payment audit trail
+      const auditLogId = `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await query(`
+        INSERT INTO payment_audit_logs (
+          id, rent_record_id, tenant_id, transaction_ref, amount,
+          level_1_status, level_2_status, final_decision, verification_source, verification_details
+        ) VALUES (?, ?, ?, ?, ?, 'passed', 'owner_approved', 'approved', 'owner_manual_review', ?)
+      `, [
+        auditLogId,
+        proof.rent_record_id,
+        proof.tenant_id,
+        proof.transaction_ref,
+        proof.amount,
+        JSON.stringify({ reviewerId, receiptNo, notes: proof.notes || '', approvedAmount: proof.amount })
+      ]);
 
       if (tenant && tenant.user_id) {
         const notifId = `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -962,7 +993,9 @@ const verifyPaymentProof = async (req, res) => {
         tenantId: proof.tenant_id,
         amount: proof.amount,
         receiptNo,
-        newRentStatus: newStatus
+        newRentStatus: newStatus,
+        paidAmount: newPaid,
+        pendingAmount: newPending
       });
 
       return res.status(200).json({
@@ -972,7 +1005,10 @@ const verifyPaymentProof = async (req, res) => {
         status: 'approved',
         proofId,
         rentRecordId: proof.rent_record_id,
-        amount: proof.amount
+        amount: proof.amount,
+        paidAmount: newPaid,
+        pendingAmount: newPending,
+        rentStatus: newStatus
       });
     } else {
       await query(`
@@ -982,7 +1018,7 @@ const verifyPaymentProof = async (req, res) => {
           reviewed_at = CURRENT_TIMESTAMP,
           reviewed_by = ?
         WHERE id = ?
-      `, [rejection_reason || 'Payment details could not be matched with bank statement', req.user?.id || 'usr-owner-001', proofId]);
+      `, [rejection_reason || 'Payment details could not be matched with bank statement', reviewerId, proofId]);
 
       if (rentRecord) {
         const isPastDue = new Date(rentRecord.due_date) < new Date();
@@ -991,6 +1027,22 @@ const verifyPaymentProof = async (req, res) => {
           proof.rent_record_id
         ]);
       }
+
+      // Log into payment audit trail
+      const auditLogId = `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await query(`
+        INSERT INTO payment_audit_logs (
+          id, rent_record_id, tenant_id, transaction_ref, amount,
+          level_1_status, level_2_status, final_decision, verification_source, verification_details
+        ) VALUES (?, ?, ?, ?, ?, 'rejected', 'owner_rejected', 'rejected', 'owner_manual_review', ?)
+      `, [
+        auditLogId,
+        proof.rent_record_id,
+        proof.tenant_id,
+        proof.transaction_ref,
+        proof.amount,
+        JSON.stringify({ reviewerId, rejection_reason: rejection_reason || 'Details not matched' })
+      ]);
 
       if (tenant && tenant.user_id) {
         const notifId = `ntf-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -1017,7 +1069,7 @@ const verifyPaymentProof = async (req, res) => {
     console.error('[PAYMENT_VERIFY_ERROR] Verification failed:', err);
     return res.status(500).json({
       success: false,
-      message: 'Verification action failed: ' + err.message
+      message: 'Verification action failed: ' + (err.message || 'Internal error')
     });
   }
 };
